@@ -16,6 +16,7 @@
             <nav class="nav-menu">
                 <button class="nav-item active" data-tab="tab-process">Выбор процесса</button>
                 <button class="nav-item" data-tab="tab-custom">Свой статус</button>
+                <button class="nav-item" data-tab="tab-settings">Настройки</button>
             </nav>
             <div class="status-panel">
                 <div class="status-indicator">
@@ -154,6 +155,39 @@
                         </label>
                         <button class="btn btn-primary" style="width: 100%; margin-top: 20px; font-size: 16px;"
                             id="btn-start-custom">🔥 Установить Кастомный Статус</button>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- Вкладка: Настройки -->
+            <section id="tab-settings" class="tab-content">
+                <div class="tab-header">
+                    <h2>Настройки приложения ⚙️</h2>
+                    <p class="text-muted" style="margin:0; font-size:14px;">Полезные функции для комфортного
+                        использования</p>
+                </div>
+
+                <div class="card pb-0" style="background: transparent; border: none; padding: 0;">
+
+                    <div class="settings-group">
+                        <div class="group-title">Запуск вместе с ПК</div>
+                        <label class="checkbox-label" style="margin-top: 0; font-weight: 500;">
+                            <input type="checkbox" id="setting-autostart">
+                            Запускать Fast RPC автоматически при включении компьютера
+                        </label>
+                        <small class="help-text">Программа сама будет запускаться и подхватывать ваш последний
+                            сохраненный статус.</small>
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="group-title">Сохранение данных 💾</div>
+                        <label class="checkbox-label" style="margin-top: 0; font-weight: 500;">
+                            <input type="checkbox" id="setting-autosave" checked>
+                            Запоминать введенные настройки Кастомного Статуса
+                        </label>
+                        <small class="help-text">При следующем открытии приложения вам не придется вводить все
+                            заново.</small>
                     </div>
 
                 </div>

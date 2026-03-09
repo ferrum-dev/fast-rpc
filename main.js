@@ -150,3 +150,17 @@ ipcMain.handle('stop-rpc', async () => {
     }
     return true;
 });
+
+// Настройки автозапуска
+ipcMain.handle('get-autostart', () => {
+    return app.getLoginItemSettings().openAtLogin;
+});
+
+ipcMain.handle('toggle-autostart', (event, enable) => {
+    app.setLoginItemSettings({
+        openAtLogin: enable,
+        path: app.getPath("exe"),
+        args: ["--hidden"] // Если в будущем захотим запускать в трее
+    });
+    return true;
+});

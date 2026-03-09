@@ -170,10 +170,71 @@ btnStop.addEventListener('click', async () => {
     await ipcRenderer.invoke('stop-rpc');
 
     btnStartProc.textContent = 'Запустить RPC';
-    btnStartCustom.textContent = 'Запустить Кастомный RPC';
+    btnStartCustom.textContent = '🔥 Установить Кастомный Статус';
     updateStatusUI(false);
     showToast('RPC Остановлено');
 });
 
+// Сохранение и Загрузка данных (Настройки)
+const autostartCheck = document.getElementById('setting-autostart');
+const autosaveCheck = document.getElementById('setting-autosave');
+
+const customInputs = [
+    'custom-client-id', 'custom-details', 'custom-state',
+    'custom-large-img', 'custom-large-text', 'custom-small-img', 'custom-small-text',
+    'custom-btn1-lbl', 'custom-btn1-url', 'custom-btn2-lbl', 'custom-btn2-url'
+];
+
+function saveCustomInputs() {
+    if (!autosaveCheck.checked) return;
+    const data = {};
+    customInputs.forEach(id => {
+        data[id] = document.getElementById(id).value;
+    });
+    data['custom-time'] = document.getElementById('custom-time').checked;
+    localStorage.setItem('fastrpc_custom', JSON.stringify(data));
+}
+
+function loadCustomInputs() {
+    const saved = localStorage.getItem('fastrpc_custom');
+    if (saved) {
+        try {
+            const data = JSON.parse(saved);
+            customInputs.forEach(id => {
+                if (data[id] !== undefined) document.getElementById(id).value = data[id];
+            });
+            if (data['custom-time'] !== undefined) document.getElementById('custom-time').checked = data['custom-time'];
+        } catch (e) { }
+    }
+}
+
+// Слушатели настроек
+autosaveCheck.addEventListener('change', (e) => {
+    localStorage.setItem('fastrpc_autosave', e.target.checked);
+    if (e.target.checked) saveCustomInputs();
+    else localStorage.removeItem('fastrpc_custom');
+});
+
+autostartCheck.addEventListener('change', async (e) => {
+    await ipcRenderer.invoke('toggle-autostart', e.target.checked);
+    showToast(e.target.checked ? 'Автозапуск включен' : 'Автозапуск выключен');
+});
+
+customInputs.forEach(id => {
+    document.getElementById(id).addEventListener('input', saveCustomInputs);
+});
+document.getElementById('custom-time').addEventListener('change', saveCustomInputs);
+
+
 // Инициализация
+async function initSettings() {
+    const autosave = localStorage.getItem('fastrpc_autosave');
+    if (autosave !== null) autosaveCheck.checked = autosave === 'true';
+    if (autosaveCheck.checked) loadCustomInputs();
+
+    const isAutostart = await ipcRenderer.invoke('get-autostart');
+    autostartCheck.checked = isAutostart;
+}
+
+initSettings();
 loadProcesses();
