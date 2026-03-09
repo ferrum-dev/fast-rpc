@@ -28,6 +28,11 @@ function showToast(message, type = 'success') {
     }, 4000);
 }
 
+// Прием уведомлений об обновлении от главного процесса
+ipcRenderer.on('update-message', (event, message) => {
+    showToast(message, 'success');
+});
+
 // Вкладки
 navItems.forEach(item => {
     item.addEventListener('click', () => {

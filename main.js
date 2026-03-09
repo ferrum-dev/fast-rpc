@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const DiscordRPC = require('discord-rpc');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
 let rpcClient = null;
@@ -25,6 +26,10 @@ function createWindow() {
     });
 
     mainWindow.loadFile('index.html');
+
+    mainWindow.webContents.once('did-finish-load', () => {
+        autoUpdater.checkForUpdatesAndNotify();
+    });
 }
 
 app.whenReady().then(createWindow);
@@ -163,4 +168,16 @@ ipcMain.handle('toggle-autostart', (event, enable) => {
         args: ["--hidden"] // Если в будущем захотим запускать в трее
     });
     return true;
+});
+
+// События обновлений
+autoUpdater.on('update-available', () => {
+    if (mainWindow) mainWindow.webContents.send('update-message', 'Доступно обновление! Загружаем...');
+});
+
+autoUpdater.on('update-downloaded', () => {
+    if (mainWindow) mainWindow.webContents.send('update-message', 'Обновление загружено! Приложение перезапустится через 5 секунд...');
+    setTimeout(() => {
+        autoUpdater.quitAndInstall();
+    }, 5000);
 });

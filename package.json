@@ -20,10 +20,18 @@
     "win": {
       "target": "nsis",
       "artifactName": "${productName} Setup.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ferrum-dev",
+        "repo": "fast-rpc"
+      }
+    ]
   },
   "dependencies": {
-    "discord-rpc": "^4.0.1"
+    "discord-rpc": "^4.0.1",
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "electron": "^40.8.0",

@@ -40,7 +40,10 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          files: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
           tag_name: "v1.0.${{ github.run_number }}"
           name: "Fast RPC v1.0.${{ github.run_number }}"
           draft: false
