@@ -1,0 +1,29 @@
+{
+  "name": "fast-rpc",
+  "version": "1.0.0",
+  "description": "Customizable Discord RPC Manager",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder -w"
+  },
+  "keywords": ["discord", "rpc"],
+  "author": "ferrum-dev (Fast RPC)",
+  "license": "ISC",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.ferrum.fastrpc",
+    "productName": "Fast RPC Manager",
+    "win": {
+      "target": "nsis",
+      "artifactName": "${productName} Setup.${ext}"
+    }
+  },
+  "dependencies": {
+    "discord-rpc": "^4.0.1",
+    "electron": "^40.8.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^26.8.1"
+  }
+}

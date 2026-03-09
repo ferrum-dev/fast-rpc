@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fast RPC</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="logo">Fast RPC</div>
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="tab-process">Выбор процесса</button>
+                <button class="nav-item" data-tab="tab-custom">Свой статус</button>
+            </nav>
+            <div class="status-panel">
+                <div class="status-indicator">
+                    <div class="dot" id="ds-dot"></div>
+                    <span id="ds-status-text">Отключено</span>
+                </div>
+                <button id="btn-stop-rpc" class="btn btn-danger" disabled>Остановить RPC</button>
+            </div>
+        </aside>
+
+        <main class="content">
+            <!-- Вкладка: Выбор процесса -->
+            <section id="tab-process" class="tab-content active">
+                <header class="tab-header">
+                    <h2>Запущенные окна</h2>
+                    <button class="btn btn-secondary btn-sm" id="btn-refresh-proc">Обновить список</button>
+                </header>
+
+                <div class="process-list" id="process-list">
+                    <div class="text-muted">Загрузка...</div>
+                </div>
+
+                <div class="card" id="process-settings" style="display: none;">
+                    <h3>Настройка RPC для: <span id="selected-proc-name"></span></h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Client ID (Дополнительно)</label>
+                            <input type="text" id="proc-client-id" placeholder="ID приложения Discord"
+                                value="1131976092524458054">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Детали (Details)</label>
+                            <input type="text" id="proc-details" placeholder="Играет в...">
+                        </div>
+                        <div class="form-group">
+                            <label>Состояние (State)</label>
+                            <input type="text" id="proc-state" placeholder="Название окна">
+                        </div>
+                    </div>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="proc-time" checked>
+                        Показывать время
+                    </label>
+                    <button class="btn btn-primary" id="btn-start-proc">Запустить RPC</button>
+                </div>
+            </section>
+
+            <!-- Вкладка: Свой статус -->
+            <section id="tab-custom" class="tab-content">
+                <div class="tab-header">
+                    <h2>Сам себе хозяин 🎩</h2>
+                    <p class="text-muted" style="margin:0; font-size:14px;">Настрой свой игровой статус так, как хочешь
+                        ты. Ничего сложного!</p>
+                </div>
+
+                <div class="card pb-0" style="background: transparent; border: none; padding: 0;">
+
+                    <div class="settings-group">
+                        <div class="group-title">1. Главная настройка (Обязательно)</div>
+                        <div class="form-group">
+                            <label>ID приложения из Discord</label>
+                            <input type="text" id="custom-client-id" placeholder="Например: 1131976092524458054"
+                                value="1131976092524458054">
+                            <small class="help-text">Можешь оставить так, это дефолтный ID. Или вставь свой.</small>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="group-title">2. Текст статуса (Что ты сейчас делаешь?)</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Верхняя строка (Детали)</label>
+                                <input type="text" id="custom-details" placeholder="Например: Пишет код">
+                            </div>
+                            <div class="form-group">
+                                <label>Нижняя строка (Состояние)</label>
+                                <input type="text" id="custom-state" placeholder="Например: Изучает JavaScript">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="group-title">3. Картинки (Опционально)</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Название БОЛЬШОЙ картинки</label>
+                                <input type="text" id="custom-large-img" placeholder="Например: logo">
+                            </div>
+                            <div class="form-group">
+                                <label>Текст при наведении на неё</label>
+                                <input type="text" id="custom-large-text" placeholder="Моя аватарка">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Название МАЛЕНЬКОЙ картинки</label>
+                                <input type="text" id="custom-small-img" placeholder="Например: verify">
+                            </div>
+                            <div class="form-group">
+                                <label>Текст при наведении на неё</label>
+                                <input type="text" id="custom-small-text" placeholder="Проверен">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="group-title">4. Кликабельные кнопки (Опционально)</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Текст 1-й кнопки</label>
+                                <input type="text" id="custom-btn1-lbl" placeholder="Мой YouTube">
+                            </div>
+                            <div class="form-group">
+                                <label>Ссылка для 1-й кнопки</label>
+                                <input type="text" id="custom-btn1-url" placeholder="https://youtube.com/...">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Текст 2-й кнопки</label>
+                                <input type="text" id="custom-btn2-lbl" placeholder="Мой GitHub">
+                            </div>
+                            <div class="form-group">
+                                <label>Ссылка для 2-й кнопки</label>
+                                <input type="text" id="custom-btn2-url" placeholder="https://github.com/...">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-group" style="margin-bottom: 0;">
+                        <label class="checkbox-label" style="margin-top: 0; font-weight: 500;">
+                            <input type="checkbox" id="custom-time" checked>
+                            Показывать таймер выполнения
+                        </label>
+                        <button class="btn btn-primary" style="width: 100%; margin-top: 20px; font-size: 16px;"
+                            id="btn-start-custom">🔥 Установить Кастомный Статус</button>
+                    </div>
+
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Уведомления -->
+    <div id="notifications"></div>
+
+    <script src="renderer.js"></script>
+</body>
+
+</html>
