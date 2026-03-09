@@ -1,18 +1,89 @@
 process.noDeprecation = true;
 
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, Notification, nativeImage } = require('electron');
 const path = require('path');
-const { exec } = require('child_process');
-const DiscordRPC = require('discord-rpc');
+const { exec, spawn } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+
+// Задаём уникальный ID приложения для Windows — без него иконка в таскбаре может не подхватиться
+app.setAppUserModelId('com.ferrum.fastrpc');
 
 const LOGO_PATH = path.join(__dirname, 'logo', 'logo.png');
 
+// Создаём nativeImage из PNG — Electron сам конвертирует в нужный формат для Windows
+const APP_ICON = nativeImage.createFromPath(LOGO_PATH);
+
 let mainWindow;
 let tray;
-let rpcClient = null;
-let currentClientId = null;
-let startTimestamp = null;
+let rpcWorker = null;
+let rpcActive = false;
+
+// ===== RPC WORKER (ОТДЕЛЬНЫЙ ПРОЦЕСС) =====
+
+function startWorker() {
+    if (rpcWorker) return; // Уже запущен
+
+    rpcWorker = spawn(process.execPath, [path.join(__dirname, 'rpc-worker.js')], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: false
+    });
+
+    let outBuffer = '';
+
+    rpcWorker.stdout.on('data', (chunk) => {
+        outBuffer += chunk.toString();
+        const lines = outBuffer.split('\n');
+        outBuffer = lines.pop();
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+                const msg = JSON.parse(trimmed);
+                handleWorkerMessage(msg);
+            } catch (e) { }
+        }
+    });
+
+    rpcWorker.stderr.on('data', (d) => console.error('[Worker]', d.toString()));
+    rpcWorker.on('exit', () => {
+        console.log('RPC Worker exited');
+        rpcWorker = null;
+        rpcActive = false;
+    });
+}
+
+function sendWorker(data) {
+    if (rpcWorker && rpcWorker.stdin.writable) {
+        rpcWorker.stdin.write(JSON.stringify(data) + '\n');
+    }
+}
+
+function killWorker() {
+    if (rpcWorker) {
+        sendWorker({ type: 'exit' });
+        setTimeout(() => {
+            if (rpcWorker) { rpcWorker.kill(); rpcWorker = null; }
+        }, 500);
+        rpcActive = false;
+    }
+}
+
+function handleWorkerMessage(msg) {
+    if (!msg) return;
+    if (msg.type === 'ok') {
+        rpcActive = true;
+        if (mainWindow) mainWindow.webContents.send('rpc-status', { active: true });
+    } else if (msg.type === 'error') {
+        rpcActive = false;
+        if (mainWindow) mainWindow.webContents.send('rpc-status', { active: false, error: msg.message });
+    } else if (msg.type === 'stopped') {
+        rpcActive = false;
+        if (mainWindow) mainWindow.webContents.send('rpc-status', { active: false });
+    }
+}
+
+// ===== MAIN WINDOW =====
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -26,171 +97,197 @@ function createWindow() {
         },
         autoHideMenuBar: true,
         backgroundColor: '#f4f6f8',
-        icon: LOGO_PATH,
+        icon: APP_ICON,
         title: 'Fast RPC'
     });
 
     mainWindow.loadFile('index.html');
 
+    // Закрытие по крестику = сворачиваем в трей
+    mainWindow.on('close', (e) => {
+        if (!app.isQuiting) {
+            e.preventDefault();
+            mainWindow.hide();
+
+            // Windows уведомление
+            if (Notification.isSupported()) {
+                const notif = new Notification({
+                    title: 'Fast RPC работает в фоне',
+                    body: rpcActive
+                        ? '🟢 RPC активен! Нажмите, чтобы управлять.'
+                        : '💤 Нажмите, чтобы открыть приложение.',
+                    icon: LOGO_PATH,
+                    silent: false
+                });
+
+                notif.on('click', () => {
+                    if (rpcActive) {
+                        // Спрашиваем что делать
+                        dialog.showMessageBox({
+                            type: 'question',
+                            title: 'Fast RPC',
+                            message: 'RPC активен в фоне!',
+                            detail: 'Что вы хотите сделать?',
+                            buttons: ['Открыть приложение', 'Остановить RPC и выйти', 'Оставить в фоне'],
+                            defaultId: 0,
+                            icon: LOGO_PATH
+                        }).then(({ response }) => {
+                            if (response === 0) {
+                                mainWindow.show();
+                            } else if (response === 1) {
+                                app.isQuiting = true;
+                                killWorker();
+                                app.quit();
+                            }
+                            // 2 = Оставить в фоне, ничего не делаем
+                        });
+                    } else {
+                        mainWindow.show();
+                    }
+                });
+
+                notif.show();
+            }
+        }
+    });
+
     mainWindow.webContents.once('did-finish-load', () => {
-        // Проверка обновлений через 3 секунды после загрузки
+        // Передаём текущее состояние RPC при открытии окна
+        mainWindow.webContents.send('rpc-status', { active: rpcActive });
+
         setTimeout(() => {
             autoUpdater.checkForUpdates().catch(() => { });
         }, 3000);
     });
 }
 
+// ===== TRAY =====
+
 function createTray() {
-    tray = new Tray(LOGO_PATH);
-    const contextMenu = Menu.buildFromTemplate([
-        { label: 'Fast RPC', enabled: false },
-        { type: 'separator' },
-        { label: 'Открыть', click: () => mainWindow && mainWindow.show() },
-        {
-            label: 'Остановить RPC', click: () => {
-                if (rpcClient) {
-                    try { rpcClient.clearActivity(); rpcClient.destroy(); } catch (e) { }
-                    rpcClient = null; currentClientId = null; startTimestamp = null;
-                    if (mainWindow) mainWindow.webContents.send('rpc-stopped-tray');
+    tray = new Tray(APP_ICON);
+
+    const updateMenu = () => {
+        const contextMenu = Menu.buildFromTemplate([
+            { label: 'Fast RPC Manager', enabled: false },
+            { type: 'separator' },
+            {
+                label: rpcActive ? '🟢 RPC Активен' : '⚪ RPC Неактивен',
+                enabled: false
+            },
+            { type: 'separator' },
+            {
+                label: 'Открыть',
+                click: () => { mainWindow && mainWindow.show(); }
+            },
+            {
+                label: 'Остановить RPC',
+                enabled: rpcActive,
+                click: () => {
+                    sendWorker({ type: 'stop' });
+                }
+            },
+            { type: 'separator' },
+            {
+                label: 'Выход',
+                click: () => {
+                    app.isQuiting = true;
+                    killWorker();
+                    app.quit();
                 }
             }
-        },
-        { type: 'separator' },
-        { label: 'Выход', click: () => app.quit() }
-    ]);
+        ]);
+
+        tray.setContextMenu(contextMenu);
+    };
+
     tray.setToolTip('Fast RPC Manager');
-    tray.setContextMenu(contextMenu);
     tray.on('double-click', () => mainWindow && mainWindow.show());
+    updateMenu();
+
+    // Обновляем трей-меню при смене статуса RPC
+    ipcMain.on('rpc-status-changed', () => updateMenu());
 }
 
+// ===== APP INIT =====
+
 app.whenReady().then(() => {
+    startWorker(); // Стартуем воркер сразу при запуске приложения
     createWindow();
     createTray();
 });
 
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+app.on('window-all-closed', (e) => {
+    // НЕ выходим — мы висим в трее
 });
 
-// Получить запущенные процессы с окнами
+app.on('before-quit', () => {
+    app.isQuiting = true;
+});
+
+// ===== IPC HANDLERS =====
+
 ipcMain.handle('get-processes', async () => {
     return new Promise((resolve) => {
-        // Скрываем системные процессы и программы без окна
         const script = `Get-Process | Where-Object {$_.MainWindowTitle -ne '' -and $_.Name -ne 'ApplicationFrameHost'} | Select-Object Name, MainWindowTitle, Id | ConvertTo-Json`;
         exec(`powershell -Command "${script}"`, (err, stdout) => {
-            if (err) {
-                resolve([]);
-                return;
-            }
+            if (err) { resolve([]); return; }
             try {
                 let processes = JSON.parse(stdout);
                 if (!Array.isArray(processes)) processes = [processes];
                 resolve(processes);
-            } catch (e) {
-                resolve([]);
-            }
+            } catch (e) { resolve([]); }
         });
     });
 });
 
-// Установить RPC активность
+// Запуск/обновление RPC — делегируем воркеру
 ipcMain.handle('set-rpc', async (event, config) => {
-    try {
-        const activity = {};
-        if (config.details) activity.details = config.details;
-        if (config.state) activity.state = config.state;
-        if (config.largeImageKey) activity.largeImageKey = config.largeImageKey;
-        if (config.largeImageText) activity.largeImageText = config.largeImageText;
-        if (config.smallImageKey) activity.smallImageKey = config.smallImageKey;
-        if (config.smallImageText) activity.smallImageText = config.smallImageText;
+    startWorker(); // На случай если воркер упал
+    return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+            resolve({ success: false, error: 'Время ожидания истекло. Попробуйте ещё раз.' });
+        }, 10000);
 
-        activity.instance = false;
-
-        // Обработка времени
-        if (config.useTimestamp) {
-            if (!startTimestamp) startTimestamp = new Date();
-            activity.startTimestamp = startTimestamp;
-        } else {
-            startTimestamp = null;
-        }
-
-        // Кнопки
-        let buttons = [];
-        if (config.button1Label && config.button1Url) {
-            buttons.push({
-                label: String(config.button1Label).substring(0, 32),
-                url: String(config.button1Url).substring(0, 512)
-            });
-        }
-        if (config.button2Label && config.button2Url) {
-            buttons.push({
-                label: String(config.button2Label).substring(0, 32),
-                url: String(config.button2Url).substring(0, 512)
-            });
-        }
-        if (buttons.length > 0) {
-            activity.buttons = buttons;
-        }
-
-        // Если клиент уже подключен и ID не изменился, просто обновляем
-        if (rpcClient && currentClientId === config.clientId) {
-            try {
-                await rpcClient.setActivity(activity);
-                return { success: true };
-            } catch (err) {
-                // Если ошибка обновления, продолжаем, чтобы попытаться переподключиться
-                console.error("Set Activity Error:", err);
+        // Слушаем ОДИН ответ воркера
+        const onceHandler = (msg) => {
+            if (msg.type === 'ok' || msg.type === 'error') {
+                clearTimeout(timeout);
+                if (msg.type === 'ok') resolve({ success: true });
+                else resolve({ success: false, error: msg.message });
             }
-        }
+        };
+        // Временный обработчик
+        rpcWorker.stdout.once('data', () => { }); // ensure listener exists
+        const originalHandler = handleWorkerMessage;
+        const wrapped = (m) => { originalHandler(m); onceHandler(m); };
+        // Подменяем обработчик на один цикл
+        const prevListeners = rpcWorker.stdout.listeners('data');
+        handleWorkerMessage_override = onceHandler;
 
-        // Уничтожаем старый клиент
-        if (rpcClient) {
-            try { rpcClient.destroy(); } catch (err) { }
-        }
-
-        // Создаем новое подключение
-        currentClientId = config.clientId;
-        rpcClient = new DiscordRPC.Client({ transport: 'ipc' });
-
-        return new Promise((resolve, reject) => {
-            rpcClient.on('ready', () => {
-                rpcClient.setActivity(activity).catch(console.error);
-                resolve({ success: true });
-            });
-
-            rpcClient.login({ clientId: config.clientId }).catch(err => {
-                let errorMsg = "Не удалось подключиться к Discord (Неверный ID?)";
-                if (err && err.message && (err.message.includes('connection closed') || err.message.includes('Could not connect'))) {
-                    errorMsg = "Ошибка подключения: Убедитесь, что Discord запущен на ПК!";
-                } else if (err && err.message) {
-                    errorMsg = "Ошибка: " + err.message;
-                    console.error("RPC Login Error:", err);
-                }
-
-                rpcClient = null;
-                currentClientId = null;
-                resolve({ success: false, error: errorMsg });
-            });
-        });
-    } catch (e) {
-        console.error("Unhandled RPC Error:", e);
-        return { success: false, error: e.message };
-    }
+        sendWorker({ type: 'start', config });
+    });
 });
 
-// Остановка RPC
-ipcMain.handle('stop-rpc', async () => {
-    if (rpcClient) {
-        try { rpcClient.clearActivity(); } catch (err) { }
-        try { rpcClient.destroy(); } catch (err) { }
-        rpcClient = null;
-        currentClientId = null;
-        startTimestamp = null;
+let handleWorkerMessage_override = null;
+// Патчим handleWorkerMessage
+const origHandle = handleWorkerMessage;
+function handleWorkerMessage(msg) {
+    origHandle(msg);
+    if (handleWorkerMessage_override) {
+        handleWorkerMessage_override(msg);
+        handleWorkerMessage_override = null;
     }
+    // Обновляем трей
+    if (msg.type === 'ok' || msg.type === 'stopped' || msg.type === 'error') {
+        ipcMain.emit('rpc-status-changed');
+    }
+}
+
+ipcMain.handle('stop-rpc', async () => {
+    sendWorker({ type: 'stop' });
     return true;
 });
 
-// Настройки автозапуска
 ipcMain.handle('get-autostart', () => {
     return app.getLoginItemSettings().openAtLogin;
 });
@@ -199,7 +296,7 @@ ipcMain.handle('toggle-autostart', (event, enable) => {
     app.setLoginItemSettings({
         openAtLogin: enable,
         path: app.getPath("exe"),
-        args: ["--hidden"] // Если в будущем захотим запускать в трее
+        args: []
     });
     return true;
 });
@@ -214,54 +311,48 @@ autoUpdater.on('update-available', (info) => {
     if (!mainWindow) return;
     dialog.showMessageBox(mainWindow, {
         type: 'info',
-        title: '🚀 Доступно обновление!',
+        title: 'Доступно обновление!',
         message: `Вышла новая версия Fast RPC (v${info.version})!`,
-        detail: 'Хотите скачать и установить обновление сейчас? Это займёт совсем немного времени.',
+        detail: 'Хотите скачать и установить обновление сейчас?',
         buttons: ['Обновить', 'Потом'],
         defaultId: 0,
         cancelId: 1,
         icon: LOGO_PATH
     }).then(({ response }) => {
         if (response === 0) {
-            if (mainWindow) mainWindow.webContents.send('update-message', '⬇️ Загружаем обновление...');
+            if (mainWindow) mainWindow.webContents.send('update-message', 'Загружаем обновление...');
             autoUpdater.downloadUpdate().catch(err => {
                 console.error('Download failed:', err);
-                if (mainWindow) {
-                    dialog.showErrorBox('Ошибка загрузки', `Не удалось загрузить обновление: ${err.message}`);
-                }
+                if (mainWindow) dialog.showErrorBox('Ошибка загрузки', err.message);
             });
         }
     });
 });
 
 autoUpdater.on('update-not-available', () => {
-    // Тихо, не показываем ничего — просто в консоль
-    console.log('Обновлений нет, всё актуально.');
+    console.log('Нет обновлений.');
 });
 
 autoUpdater.on('download-progress', (progress) => {
     if (mainWindow) {
-        const percent = Math.round(progress.percent);
-        mainWindow.setProgressBar(progress.percent / 100); // Прогресс в таскбаре!
-        mainWindow.webContents.send('update-progress', percent);
+        mainWindow.setProgressBar(progress.percent / 100);
+        mainWindow.webContents.send('update-progress', Math.round(progress.percent));
     }
 });
 
 autoUpdater.on('update-downloaded', (info) => {
     if (mainWindow) {
-        mainWindow.setProgressBar(-1); // Убираем прогресс из таскбара
+        mainWindow.setProgressBar(-1);
         dialog.showMessageBox(mainWindow, {
             type: 'info',
-            title: '✅ Обновление готово!',
+            title: 'Обновление готово!',
             message: `Fast RPC v${info.version} загружен!`,
-            detail: 'Нажмите "Перезапустить", чтобы применить обновление прямо сейчас.',
-            buttons: ['Перезапустить', 'Потом (при следующем запуске)'],
+            detail: 'Перезапустить сейчас?',
+            buttons: ['Перезапустить', 'Потом'],
             defaultId: 0,
             icon: LOGO_PATH
         }).then(({ response }) => {
-            if (response === 0) {
-                autoUpdater.quitAndInstall();
-            }
+            if (response === 0) autoUpdater.quitAndInstall();
         });
     }
 });

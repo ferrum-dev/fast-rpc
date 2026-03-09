@@ -18,6 +18,15 @@
     "appId": "com.ferrum.fastrpc",
     "productName": "Fast RPC Manager",
     "icon": "logo/logo.png",
+    "files": [
+      "main.js",
+      "rpc-worker.js",
+      "renderer.js",
+      "index.html",
+      "style.css",
+      "logo/**",
+      "package.json"
+    ],
     "win": {
       "icon": "logo/logo.png",
       "target": "nsis",

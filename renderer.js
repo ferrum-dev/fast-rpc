@@ -28,19 +28,30 @@ function showToast(message, type = 'success') {
     }, 4000);
 }
 
-// Прием уведомлений об обновлении от главного процесса
-ipcRenderer.on('update-message', (event, message, type = 'success') => {
-    showToast(message, type);
+// Главный IPC: статус RPC от воркера
+ipcRenderer.on('rpc-status', (event, { active, error }) => {
+    updateStatusUI(active);
+    if (error) showToast(error, 'error');
+});
+
+// Обновления
+ipcRenderer.on('update-message', (event, message) => {
+    showToast(message, 'success');
 });
 
 ipcRenderer.on('update-progress', (event, percent) => {
-    showToast(`⬇️ Загрузка обновления: ${percent}%`, 'success');
+    // Обновляем только последний тост, чтобы не спамить
+    const area = document.getElementById('notifications');
+    let existing = area.querySelector('.toast-progress');
+    if (!existing) {
+        existing = document.createElement('div');
+        existing.className = 'toast toast-success toast-progress';
+        area.appendChild(existing);
+    }
+    existing.innerHTML = `<span>Загружаем обновление: ${percent}%</span>`;
+    if (percent >= 100) setTimeout(() => existing.remove(), 2000);
 });
 
-ipcRenderer.on('rpc-stopped-tray', () => {
-    updateStatusUI(false);
-    showToast('RPC остановлен из трея');
-});
 
 // Вкладки
 navItems.forEach(item => {

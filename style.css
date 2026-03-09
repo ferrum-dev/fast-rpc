@@ -53,7 +53,9 @@ body {
     width: 32px;
     height: 32px;
     border-radius: 8px;
-    object-fit: cover;
+    object-fit: contain;
+    flex-shrink: 0;
+    display: block;
 }
 
 .nav-menu {
@@ -72,6 +74,10 @@ body {
     cursor: pointer;
     color: var(--text-muted);
     transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
 }
 
 .nav-item:hover {
@@ -299,6 +305,10 @@ body {
     padding: 12px 16px;
     font-size: 14px;
     width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
 .btn-danger:hover {
