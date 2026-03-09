@@ -29,8 +29,17 @@ function showToast(message, type = 'success') {
 }
 
 // Прием уведомлений об обновлении от главного процесса
-ipcRenderer.on('update-message', (event, message) => {
-    showToast(message, 'success');
+ipcRenderer.on('update-message', (event, message, type = 'success') => {
+    showToast(message, type);
+});
+
+ipcRenderer.on('update-progress', (event, percent) => {
+    showToast(`⬇️ Загрузка обновления: ${percent}%`, 'success');
+});
+
+ipcRenderer.on('rpc-stopped-tray', () => {
+    updateStatusUI(false);
+    showToast('RPC остановлен из трея');
 });
 
 // Вкладки

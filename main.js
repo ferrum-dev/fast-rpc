@@ -1,12 +1,15 @@
-process.noDeprecation = true; // Скрываем надоедливую ошибку punycode ядра Node.js
+process.noDeprecation = true;
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const DiscordRPC = require('discord-rpc');
 const { autoUpdater } = require('electron-updater');
 
+const LOGO_PATH = path.join(__dirname, 'logo', 'logo.png');
+
 let mainWindow;
+let tray;
 let rpcClient = null;
 let currentClientId = null;
 let startTimestamp = null;
@@ -15,24 +18,55 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1050,
         height: 750,
+        minWidth: 850,
+        minHeight: 600,
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
         },
         autoHideMenuBar: true,
         backgroundColor: '#f4f6f8',
-        icon: path.join(__dirname, 'build', 'icon.ico'),
+        icon: LOGO_PATH,
         title: 'Fast RPC'
     });
 
     mainWindow.loadFile('index.html');
 
     mainWindow.webContents.once('did-finish-load', () => {
-        autoUpdater.checkForUpdatesAndNotify();
+        // Проверка обновлений через 3 секунды после загрузки
+        setTimeout(() => {
+            autoUpdater.checkForUpdates().catch(() => { });
+        }, 3000);
     });
 }
 
-app.whenReady().then(createWindow);
+function createTray() {
+    tray = new Tray(LOGO_PATH);
+    const contextMenu = Menu.buildFromTemplate([
+        { label: 'Fast RPC', enabled: false },
+        { type: 'separator' },
+        { label: 'Открыть', click: () => mainWindow && mainWindow.show() },
+        {
+            label: 'Остановить RPC', click: () => {
+                if (rpcClient) {
+                    try { rpcClient.clearActivity(); rpcClient.destroy(); } catch (e) { }
+                    rpcClient = null; currentClientId = null; startTimestamp = null;
+                    if (mainWindow) mainWindow.webContents.send('rpc-stopped-tray');
+                }
+            }
+        },
+        { type: 'separator' },
+        { label: 'Выход', click: () => app.quit() }
+    ]);
+    tray.setToolTip('Fast RPC Manager');
+    tray.setContextMenu(contextMenu);
+    tray.on('double-click', () => mainWindow && mainWindow.show());
+}
+
+app.whenReady().then(() => {
+    createWindow();
+    createTray();
+});
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
@@ -170,14 +204,63 @@ ipcMain.handle('toggle-autostart', (event, enable) => {
     return true;
 });
 
-// События обновлений
-autoUpdater.on('update-available', () => {
-    if (mainWindow) mainWindow.webContents.send('update-message', 'Доступно обновление! Загружаем...');
+// ===== АВТО-ОБНОВЛЕНИЕ =====
+autoUpdater.autoDownload = false; // Качаем только с согласия пользователя
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on('update-available', (info) => {
+    if (!mainWindow) return;
+    // Красивый диалог с предложением обновиться
+    dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: '🚀 Доступно обновление!',
+        message: `Вышла новая версия Fast RPC (v${info.version})!`,
+        detail: 'Хотите скачать и установить обновление сейчас? Это займёт совсем немного времени.',
+        buttons: ['Обновить', 'Потом'],
+        defaultId: 0,
+        cancelId: 1,
+        icon: LOGO_PATH
+    }).then(({ response }) => {
+        if (response === 0) {
+            // Пользователь согласился — начинаем скачивание
+            mainWindow.webContents.send('update-message', '⬇️ Загружаем обновление...', 'success');
+            autoUpdater.downloadUpdate();
+        }
+    });
 });
 
-autoUpdater.on('update-downloaded', () => {
-    if (mainWindow) mainWindow.webContents.send('update-message', 'Обновление загружено! Приложение перезапустится через 5 секунд...');
-    setTimeout(() => {
-        autoUpdater.quitAndInstall();
-    }, 5000);
+autoUpdater.on('update-not-available', () => {
+    // Тихо, не показываем ничего — просто в консоль
+    console.log('Обновлений нет, всё актуально.');
+});
+
+autoUpdater.on('download-progress', (progress) => {
+    if (mainWindow) {
+        const percent = Math.round(progress.percent);
+        mainWindow.setProgressBar(progress.percent / 100); // Прогресс в таскбаре!
+        mainWindow.webContents.send('update-progress', percent);
+    }
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+    if (mainWindow) {
+        mainWindow.setProgressBar(-1); // Убираем прогресс из таскбара
+        dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: '✅ Обновление готово!',
+            message: `Fast RPC v${info.version} загружен!`,
+            detail: 'Нажмите "Перезапустить", чтобы применить обновление прямо сейчас.',
+            buttons: ['Перезапустить', 'Потом (при следующем запуске)'],
+            defaultId: 0,
+            icon: LOGO_PATH
+        }).then(({ response }) => {
+            if (response === 0) {
+                autoUpdater.quitAndInstall();
+            }
+        });
+    }
+});
+
+autoUpdater.on('error', (err) => {
+    console.error('Updater error:', err.message);
 });

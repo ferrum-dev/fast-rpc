@@ -44,6 +44,16 @@ body {
     font-weight: 700;
     margin-bottom: 32px;
     color: var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.logo-img {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    object-fit: cover;
 }
 
 .nav-menu {
