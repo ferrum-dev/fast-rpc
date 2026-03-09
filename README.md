@@ -1,8 +1,5 @@
 <br/>
 <div align="center">
-    <a href="https://github.com/ferrum-dev/fast-rpc">
-      <img src="https://raw.githubusercontent.com/ferrum-dev/fast-rpc/main/build/icon.ico" alt="Logo" width="100" height="100" onerror="this.src='https://cdn3.emoji.gg/emojis/3468_discord_boost.png';">
-    </a>
     <h1 align="center">Fast RPC</h1>
     <p align="center">
         Удобный, красивый и настраиваемый Discord Rich Presence (RPC) менеджер.
@@ -22,10 +19,10 @@
 * 💾 **Сохранение данных:** Автоматически запоминает все ваши предыдущие настройки. Больше не нужно вводить ID и кнопки каждый раз заново! (Новое!)
 * 💻 **Автозапуск вместе с ПК:** Настройте автозапуск в один клик. Программа запустится незаметно и сразу восстановит ваш любимый статус. (Новое!)
 * ⚡ **Супер быстрый интерфейс:** Светлый и премиальный дизайн в стиле нативных приложений ОС, без лагов и задержек.
-* 📦 **Cloud Build:** Автоматически компилируется в `.exe` при заливке на гитхаб без лишних хлопот.
 
 ### 📷 Скриншоты
-*(Загрузите скриншоты приложения сюда)*
+![screenshot 1](screenshoot/1.png)
+![screenshot 2](screenshoot/2.png)
 
 ---
 

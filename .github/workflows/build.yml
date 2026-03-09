@@ -38,7 +38,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.exe
-          draft: true
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "Fast RPC v1.0.${{ github.run_number }}"
+          draft: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
