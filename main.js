@@ -205,12 +205,13 @@ ipcMain.handle('toggle-autostart', (event, enable) => {
 });
 
 // ===== АВТО-ОБНОВЛЕНИЕ =====
-autoUpdater.autoDownload = false; // Качаем только с согласия пользователя
+autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.logger = require('electron-log');
+autoUpdater.logger.transports.file.level = 'info';
 
 autoUpdater.on('update-available', (info) => {
     if (!mainWindow) return;
-    // Красивый диалог с предложением обновиться
     dialog.showMessageBox(mainWindow, {
         type: 'info',
         title: '🚀 Доступно обновление!',
@@ -222,9 +223,13 @@ autoUpdater.on('update-available', (info) => {
         icon: LOGO_PATH
     }).then(({ response }) => {
         if (response === 0) {
-            // Пользователь согласился — начинаем скачивание
-            mainWindow.webContents.send('update-message', '⬇️ Загружаем обновление...', 'success');
-            autoUpdater.downloadUpdate();
+            if (mainWindow) mainWindow.webContents.send('update-message', '⬇️ Загружаем обновление...');
+            autoUpdater.downloadUpdate().catch(err => {
+                console.error('Download failed:', err);
+                if (mainWindow) {
+                    dialog.showErrorBox('Ошибка загрузки', `Не удалось загрузить обновление: ${err.message}`);
+                }
+            });
         }
     });
 });
