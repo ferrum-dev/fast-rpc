@@ -6,6 +6,18 @@
         <br />
         <a href="https://github.com/ferrum-dev/fast-rpc/releases"><strong>Скачать последнюю версию »</strong></a>
     </p>
+    <br>
+    <p>
+        <a href="https://github.com/ferrum-dev/fast-rpc/releases">
+            <img src="https://img.shields.io/github/v/release/ferrum-dev/fast-rpc" alt="GitHub release">
+        </a>
+        <a href="https://github.com/ferrum-dev/fast-rpc/releases">
+            <img src="https://img.shields.io/github/downloads/ferrum-dev/fast-rpc/total" alt="GitHub downloads">
+        </a>
+        <a href="https://github.com/ferrum-dev/fast-rpc/blob/main/LICENSE">
+            <img src="https://img.shields.io/github/license/ferrum-dev/fast-rpc" alt="License">
+        </a>
+    </p>
 </div>
 
 ***

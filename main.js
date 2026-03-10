@@ -81,6 +81,16 @@ function handleWorkerMessage(msg) {
         rpcActive = false;
         if (mainWindow) mainWindow.webContents.send('rpc-status', { active: false });
     }
+    
+    // Обработка ответа для set-rpc
+    if (rpcResponseHandler) {
+        rpcResponseHandler(msg);
+    }
+    
+    // Обновляем трей
+    if (msg.type === 'ok' || msg.type === 'stopped' || msg.type === 'error') {
+        ipcMain.emit('rpc-status-changed');
+    }
 }
 
 // ===== MAIN WINDOW =====
@@ -241,47 +251,30 @@ ipcMain.handle('get-processes', async () => {
 });
 
 // Запуск/обновление RPC — делегируем воркеру
+let rpcResponseHandler = null;
+
 ipcMain.handle('set-rpc', async (event, config) => {
     startWorker(); // На случай если воркер упал
+    
     return new Promise((resolve) => {
         const timeout = setTimeout(() => {
+            rpcResponseHandler = null;
             resolve({ success: false, error: 'Время ожидания истекло. Попробуйте ещё раз.' });
-        }, 10000);
+        }, 30000);
 
-        // Слушаем ОДИН ответ воркера
-        const onceHandler = (msg) => {
+        // Устанавливаем обработчик для одного ответа
+        rpcResponseHandler = (msg) => {
             if (msg.type === 'ok' || msg.type === 'error') {
                 clearTimeout(timeout);
+                rpcResponseHandler = null;
                 if (msg.type === 'ok') resolve({ success: true });
                 else resolve({ success: false, error: msg.message });
             }
         };
-        // Временный обработчик
-        rpcWorker.stdout.once('data', () => { }); // ensure listener exists
-        const originalHandler = handleWorkerMessage;
-        const wrapped = (m) => { originalHandler(m); onceHandler(m); };
-        // Подменяем обработчик на один цикл
-        const prevListeners = rpcWorker.stdout.listeners('data');
-        handleWorkerMessage_override = onceHandler;
 
         sendWorker({ type: 'start', config });
     });
 });
-
-let handleWorkerMessage_override = null;
-// Патчим handleWorkerMessage
-const origHandle = handleWorkerMessage;
-function handleWorkerMessage(msg) {
-    origHandle(msg);
-    if (handleWorkerMessage_override) {
-        handleWorkerMessage_override(msg);
-        handleWorkerMessage_override = null;
-    }
-    // Обновляем трей
-    if (msg.type === 'ok' || msg.type === 'stopped' || msg.type === 'error') {
-        ipcMain.emit('rpc-status-changed');
-    }
-}
 
 ipcMain.handle('stop-rpc', async () => {
     sendWorker({ type: 'stop' });

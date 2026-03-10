@@ -57,21 +57,33 @@ async function startRpc(config) {
         currentClientId = config.clientId;
         rpcClient = new DiscordRPC.Client({ transport: 'ipc' });
 
-        await new Promise((resolve, reject) => {
-            rpcClient.on('ready', () => {
-                rpcClient.setActivity(activity).catch(() => { });
-                resolve();
+        try {
+            await new Promise((resolve, reject) => {
+                rpcClient.on('ready', () => {
+                    rpcClient.setActivity(activity).catch(() => { });
+                    resolve();
+                });
+                
+                rpcClient.on('close', () => {
+                    rpcClient = null;
+                    currentClientId = null;
+                    send('error', { message: 'Соединение с Discord закрыто' });
+                });
+
+                rpcClient.login({ clientId: config.clientId }).catch(err => {
+                    rpcClient = null;
+                    currentClientId = null;
+                    let msg = 'Не удалось подключиться к Discord.';
+                    if (err.message && err.message.includes('connection closed')) {
+                        msg = 'Ошибка: Discord не запущен на ПК!';
+                    }
+                    reject(new Error(msg));
+                });
             });
-            rpcClient.login({ clientId: config.clientId }).catch(err => {
-                rpcClient = null;
-                currentClientId = null;
-                let msg = 'Не удалось подключиться к Discord.';
-                if (err.message && err.message.includes('connection closed')) {
-                    msg = 'Ошибка: Discord не запущен на ПК!';
-                }
-                reject(new Error(msg));
-            });
-        });
+        } catch (err) {
+            send('error', { message: err.message });
+            return;
+        }
 
         send('ok');
     } catch (e) {
