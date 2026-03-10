@@ -12,8 +12,71 @@ const btnStartCustom = document.getElementById('btn-start-custom');
 const btnStop = document.getElementById('btn-stop-rpc');
 const statusDot = document.getElementById('ds-dot');
 const statusText = document.getElementById('ds-status-text');
+const selectTheme = document.getElementById('setting-theme');
+const selectLang = document.getElementById('setting-lang');
 
 let currentProc = null;
+
+// Локализация
+const translations = {
+    ru: {
+        'ad-label': 'РЕКЛАМА',
+        'ad-desc': 'Поставь звезду на GitHub!',
+        'status-disconnected': 'Отключено',
+        'btn-stop': 'Остановить RPC',
+        'settings-appearance': 'Внешний вид',
+        'settings-theme': 'Тема приложения',
+        'theme-dark': 'Темная',
+        'theme-light': 'Светлая',
+        'theme-system': 'Системная',
+        'settings-lang': 'Язык интерфейса',
+        'settings-autostart-title': 'Запуск вместе с ПК'
+    },
+    en: {
+        'ad-label': 'ADVERTISING',
+        'ad-desc': 'Star us on GitHub!',
+        'status-disconnected': 'Disconnected',
+        'btn-stop': 'Stop RPC',
+        'settings-appearance': 'Appearance',
+        'settings-theme': 'App Theme',
+        'theme-dark': 'Dark',
+        'theme-light': 'Light',
+        'theme-system': 'System',
+        'settings-lang': 'Interface Language',
+        'settings-autostart-title': 'Run at Startup'
+    }
+};
+
+function applyLanguage(lang) {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (translations[lang] && translations[lang][key]) {
+            el.textContent = translations[lang][key];
+        }
+    });
+}
+
+// Тема
+function applyTheme(theme) {
+    if (theme === 'system') {
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.body.classList.toggle('dark-theme', isDark);
+    } else {
+        document.body.classList.toggle('dark-theme', theme === 'dark');
+    }
+}
+
+selectTheme.addEventListener('change', (e) => {
+    const theme = e.target.value;
+    localStorage.setItem('fastrpc_theme', theme);
+    applyTheme(theme);
+});
+
+selectLang.addEventListener('change', (e) => {
+    const lang = e.target.value;
+    localStorage.setItem('fastrpc_lang', lang);
+    applyLanguage(lang);
+});
 
 // Уведомления
 function showToast(message, type = 'success') {
@@ -103,7 +166,11 @@ navItems.forEach(item => {
 
 // Загрузка процессов
 async function loadProcesses() {
-    processList.innerHTML = '<div class="text-muted" style="padding: 16px;">Загрузка списка процессов...</div>';
+    btnRefresh.disabled = true;
+    const originalText = btnRefresh.textContent;
+    btnRefresh.textContent = localStorage.getItem('fastrpc_lang') === 'en' ? 'Refreshing...' : 'Обновление...';
+    
+    processList.innerHTML = `<div class="text-muted" style="padding: 16px;">${localStorage.getItem('fastrpc_lang') === 'en' ? 'Loading process list...' : 'Загрузка списка процессов...'}</div>`;
     procSettings.style.display = 'none';
     currentProc = null;
 
@@ -112,7 +179,7 @@ async function loadProcesses() {
         processList.innerHTML = '';
 
         if (processes.length === 0) {
-            processList.innerHTML = '<div class="text-muted" style="padding: 16px;">Не найдено запущенных окон приложения.</div>';
+            processList.innerHTML = `<div class="text-muted" style="padding: 16px;">${localStorage.getItem('fastrpc_lang') === 'en' ? 'No running application windows found.' : 'Не найдено запущенных окон приложения.'}</div>`;
             return;
         }
 
@@ -122,7 +189,7 @@ async function loadProcesses() {
             el.innerHTML = `
                 <div>
                     <div class="proc-name">${proc.Name}</div>
-                    <div class="proc-title" title="${proc.MainWindowTitle || ''}">${proc.MainWindowTitle || 'Окно без названия'}</div>
+                    <div class="proc-title" title="${proc.MainWindowTitle || ''}">${proc.MainWindowTitle || (localStorage.getItem('fastrpc_lang') === 'en' ? 'Untitled window' : 'Окно без названия')}</div>
                 </div>
                 <div class="proc-id">PID: ${proc.Id}</div>
             `;
@@ -130,7 +197,10 @@ async function loadProcesses() {
             processList.appendChild(el);
         });
     } catch (e) {
-        processList.innerHTML = '<div class="text-muted" style="color:var(--danger); padding: 16px;">Ошибка загрузки окон</div>';
+        processList.innerHTML = `<div class="text-muted" style="color:var(--danger); padding: 16px;">${localStorage.getItem('fastrpc_lang') === 'en' ? 'Error loading windows' : 'Ошибка загрузки окон'}</div>`;
+    } finally {
+        btnRefresh.disabled = false;
+        btnRefresh.textContent = originalText;
     }
 }
 
@@ -163,6 +233,7 @@ function updateStatusUI(active) {
 
 // Запуск (Выбор процесса)
 btnStartProc.addEventListener('click', async () => {
+    console.log('[Renderer] Start RPC clicked (Process)');
     const details = document.getElementById('proc-details').value;
     const state = document.getElementById('proc-state').value;
 
@@ -201,6 +272,7 @@ btnStartProc.addEventListener('click', async () => {
 
 // Запуск (Свой статус)
 btnStartCustom.addEventListener('click', async () => {
+    console.log('[Renderer] Start RPC clicked (Custom)');
     const config = {
         clientId: document.getElementById('custom-client-id').value,
         details: document.getElementById('custom-details').value,
@@ -249,12 +321,21 @@ btnStartCustom.addEventListener('click', async () => {
 // Остановка
 btnStop.addEventListener('click', async () => {
     btnStop.disabled = true;
-    await ipcRenderer.invoke('stop-rpc');
-
-    btnStartProc.textContent = 'Запустить RPC';
-    btnStartCustom.textContent = '🔥 Установить Кастомный Статус';
-    updateStatusUI(false);
-    showToast('RPC Остановлено');
+    const originalText = btnStop.innerHTML;
+    btnStop.innerHTML = localStorage.getItem('fastrpc_lang') === 'en' ? 'Stopping...' : 'Остановка...';
+    
+    try {
+        await ipcRenderer.invoke('stop-rpc');
+        btnStartProc.textContent = localStorage.getItem('fastrpc_lang') === 'en' ? 'Start RPC' : 'Запустить RPC';
+        btnStartCustom.textContent = localStorage.getItem('fastrpc_lang') === 'en' ? 'Set Custom Status' : '🔥 Установить Кастомный Статус';
+        updateStatusUI(false);
+        showToast(localStorage.getItem('fastrpc_lang') === 'en' ? 'RPC Stopped' : 'RPC Остановлено');
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        btnStop.disabled = false;
+        btnStop.innerHTML = originalText;
+    }
 });
 
 // Сохранение и Загрузка данных (Настройки)
@@ -307,15 +388,61 @@ customInputs.forEach(id => {
 });
 document.getElementById('custom-time').addEventListener('change', saveCustomInputs);
 
+// Тема
+function applyTheme(theme) {
+    if (theme === 'system') {
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.body.classList.toggle('dark-theme', isDark);
+    } else {
+        document.body.classList.toggle('dark-theme', theme === 'dark');
+    }
+}
+
+// Удаляем старый код управления темой
+function toggleTheme() {}
+function updateThemeIcons(isDark) {}
 
 // Инициализация
 async function initSettings() {
-    const autosave = localStorage.getItem('fastrpc_autosave');
-    if (autosave !== null) autosaveCheck.checked = autosave === 'true';
-    if (autosaveCheck.checked) loadCustomInputs();
+    const savedTheme = localStorage.getItem('fastrpc_theme') || 'dark';
+    const savedLang = localStorage.getItem('fastrpc_lang') || 'ru';
 
-    const isAutostart = await ipcRenderer.invoke('get-autostart');
-    autostartCheck.checked = isAutostart;
+    const selectTheme = document.getElementById('setting-theme');
+    const selectLang = document.getElementById('setting-lang');
+
+    if (selectTheme) {
+        selectTheme.value = savedTheme;
+        selectTheme.addEventListener('change', (e) => {
+            const theme = e.target.value;
+            localStorage.setItem('fastrpc_theme', theme);
+            applyTheme(theme);
+        });
+    }
+
+    if (selectLang) {
+        selectLang.value = savedLang;
+        selectLang.addEventListener('change', (e) => {
+            const lang = e.target.value;
+            localStorage.setItem('fastrpc_lang', lang);
+            applyLanguage(lang);
+        });
+    }
+    
+    applyTheme(savedTheme);
+    applyLanguage(savedLang);
+
+    const autosave = localStorage.getItem('fastrpc_autosave');
+    const autosaveCheck = document.getElementById('setting-autosave');
+    if (autosaveCheck) {
+        if (autosave !== null) autosaveCheck.checked = autosave === 'true';
+        if (autosaveCheck.checked) loadCustomInputs();
+    }
+
+    const autostartCheck = document.getElementById('setting-autostart');
+    if (autostartCheck) {
+        const isAutostart = await ipcRenderer.invoke('get-autostart');
+        autostartCheck.checked = isAutostart;
+    }
 }
 
 initSettings();

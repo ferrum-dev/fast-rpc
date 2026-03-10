@@ -19,8 +19,18 @@ let discordToken = null;
 let currentPresence = null;
 
 function send(type, data = {}) {
-    process.stdout.write(JSON.stringify({ type, ...data }) + '\n');
+    const msg = JSON.stringify({ type, ...data });
+    process.stdout.write(msg + '\n');
 }
+
+// Глобальное логирование ошибок
+process.on('uncaughtException', (err) => {
+    // Не отправляем в stdout, чтобы не ломать JSON протокол, если это не критично
+});
+
+process.on('unhandledRejection', (reason) => {
+    // Аналогично
+});
 
 function updateConnectionStatus() {
     send('connection-status', { connected: isConnected });
@@ -148,23 +158,33 @@ async function startRpc(config) {
 
         try {
             await new Promise((resolve, reject) => {
+                const loginTimeout = setTimeout(() => {
+                    if (rpcClient) {
+                        try { rpcClient.destroy(); } catch (e) {}
+                        rpcClient = null;
+                    }
+                    reject(new Error('Превышено время ожидания подключения к Discord (30 сек). Проверьте, запущен ли Discord.'));
+                }, 30000);
+
                 rpcClient.on('ready', () => {
+                    clearTimeout(loginTimeout);
                     isConnected = true;
                     updateConnectionStatus();
-                    rpcClient.setActivity(activity).catch(() => { });
+                    
+                    rpcClient.setActivity(activity).then(() => {
+                        send('ok');
+                    }).catch((e) => {
+                        send('error', { message: 'Ошибка установки статуса: ' + e.message });
+                    });
                     resolve();
                 });
 
-                rpcClient.on('close', () => {
-                    rpcClient = null;
-                    currentClientId = null;
-                    isConnected = false;
-                    updateConnectionStatus();
-                    send('error', { message: 'Соединение с Discord закрыто' });
+                rpcClient.on('error', (err) => {
+                    // Внутренняя ошибка клиента
                 });
 
                 rpcClient.login({ clientId: config.clientId }).catch(err => {
-                    rpcClient = null;
+                    clearTimeout(loginTimeout);
                     currentClientId = null;
                     isConnected = false;
                     updateConnectionStatus();
@@ -179,8 +199,6 @@ async function startRpc(config) {
             send('error', { message: err.message });
             return;
         }
-
-        send('ok');
     } catch (e) {
         send('error', { message: e.message });
     }
@@ -201,22 +219,30 @@ function stopRpc() {
 
 // Чтение команд из stdin
 let buffer = '';
+process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => {
-    buffer += chunk.toString();
+    const data = chunk.toString();
+    buffer += data;
     const lines = buffer.split('\n');
-    buffer = lines.pop(); // Последняя строка может быть неполной
+    buffer = lines.pop();
 
     for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
         try {
             const cmd = JSON.parse(trimmed);
-            if (cmd.type === 'start') startRpc(cmd.config);
-            else if (cmd.type === 'stop') stopRpc();
-            else if (cmd.type === 'ping') send('pong');
-            else if (cmd.type === 'exit') process.exit(0);
-            else if (cmd.type === 'get-presence') getCurrentPresence().then(res => send('presence-result', res));
-        } catch (e) { }
+            if (cmd.type === 'start') {
+                startRpc(cmd.config);
+            } else if (cmd.type === 'stop') {
+                stopRpc();
+            } else if (cmd.type === 'ping') {
+                send('pong');
+            } else if (cmd.type === 'exit') {
+                process.exit(0);
+            }
+        } catch (e) { 
+            send('error', { message: 'JSON Parse Error: ' + e.message });
+        }
     }
 });
 

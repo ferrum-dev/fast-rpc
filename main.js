@@ -9,11 +9,12 @@ const { autoUpdater } = require('electron-updater');
 app.setAppUserModelId('com.ferrum.fastrpc');
 
 const LOGO_PATH = path.join(__dirname, 'logo', 'logo.png');
+const ICO_PATH = path.join(__dirname, 'logo', 'logo.ico');
 
 // Создаём иконки из PNG с правильным размером для Windows
-const APP_ICON_RAW = nativeImage.createFromPath(LOGO_PATH);
-const APP_ICON = APP_ICON_RAW.resize({ width: 256, height: 256 }); // Для окна и трея
-const TRAY_MENU_ICON = APP_ICON_RAW.resize({ width: 16, height: 16 }); // Для меню
+const APP_ICON = nativeImage.createFromPath(ICO_PATH);
+const TRAY_ICON = nativeImage.createFromPath(ICO_PATH).resize({ width: 16, height: 16 });
+const TRAY_MENU_ICON = nativeImage.createFromPath(LOGO_PATH).resize({ width: 16, height: 16 }); // Для меню
 
 let mainWindow;
 let tray;
@@ -23,11 +24,14 @@ let rpcActive = false;
 // ===== RPC WORKER (ОТДЕЛЬНЫЙ ПРОЦЕСС) =====
 
 function startWorker() {
-    if (rpcWorker) return; // Уже запущен
+    if (rpcWorker) return;
 
-    rpcWorker = spawn(process.execPath, [path.join(__dirname, 'rpc-worker.js')], {
+    const workerPath = path.join(__dirname, 'rpc-worker.js');
+
+    rpcWorker = spawn('node', [workerPath], {
         stdio: ['pipe', 'pipe', 'pipe'],
-        detached: false
+        detached: false,
+        windowsHide: true
     });
 
     let outBuffer = '';
@@ -47,9 +51,13 @@ function startWorker() {
         }
     });
 
-    rpcWorker.stderr.on('data', (d) => console.error('[Worker]', d.toString()));
+    rpcWorker.stderr.on('data', (d) => {
+        const errorMsg = d.toString();
+        if (mainWindow) {
+            mainWindow.webContents.send('rpc-status', { active: false, error: errorMsg });
+        }
+    });
     rpcWorker.on('exit', () => {
-        console.log('RPC Worker exited');
         rpcWorker = null;
         rpcActive = false;
     });
@@ -57,7 +65,7 @@ function startWorker() {
 
 function sendWorker(data) {
     if (rpcWorker && rpcWorker.stdin.writable) {
-        rpcWorker.stdin.write(JSON.stringify(data) + '\n');
+        rpcWorker.stdin.write(JSON.stringify(data) + '\n', 'utf8');
     }
 }
 
@@ -73,6 +81,7 @@ function killWorker() {
 
 function handleWorkerMessage(msg) {
     if (!msg) return;
+
     if (msg.type === 'ok') {
         rpcActive = true;
         if (mainWindow) mainWindow.webContents.send('rpc-status', { active: true });
@@ -82,18 +91,10 @@ function handleWorkerMessage(msg) {
     } else if (msg.type === 'stopped') {
         rpcActive = false;
         if (mainWindow) mainWindow.webContents.send('rpc-status', { active: false });
-    }
-
-    // Обработка ответа для set-rpc
-    if (rpcResponseHandler) {
-        rpcResponseHandler(msg);
-    }
-
-    // Обновляем статус подключения от Discord (реальное состояние)
-    if (msg.type === 'connection-status') {
-        rpcActive = msg.connected;
-        if (mainWindow) mainWindow.webContents.send('rpc-status', { active: msg.connected });
-        ipcMain.emit('rpc-status-changed');
+    } else if (msg.type === 'connection-status') {
+        if (mainWindow) mainWindow.webContents.send('rpc-status-update', { connected: msg.connected });
+    } else if (msg.type === 'presence-result') {
+        if (mainWindow) mainWindow.webContents.send('presence-result', msg);
     }
 
     // Обновление presence от Discord WebSocket
@@ -115,7 +116,7 @@ function handleWorkerMessage(msg) {
 // ===== MAIN WINDOW =====
 
 function createWindow() {
-    mainWindow = new BrowserWindow({
+    const win = new BrowserWindow({
         width: 1050,
         height: 750,
         minWidth: 850,
@@ -126,9 +127,17 @@ function createWindow() {
         },
         autoHideMenuBar: true,
         backgroundColor: '#f4f6f8',
-        icon: APP_ICON,
+        icon: ICO_PATH,
         title: 'Fast RPC'
     });
+
+    mainWindow = win;
+    
+    // Принудительно устанавливаем App User Model ID для корректной группировки в таскбаре
+    app.setAppUserModelId('com.ferrum.fastrpc');
+    
+    // Принудительно устанавливаем иконку еще раз после создания окна
+    mainWindow.setIcon(ICO_PATH);
 
     mainWindow.loadFile('index.html');
 
@@ -193,7 +202,7 @@ function createWindow() {
 // ===== TRAY =====
 
 function createTray() {
-    tray = new Tray(APP_ICON);
+    tray = new Tray(ICO_PATH); // Прямой путь к .ico файлу
 
     const updateMenu = () => {
         const contextMenu = Menu.buildFromTemplate([
@@ -296,15 +305,14 @@ ipcMain.handle('get-processes', async () => {
 let rpcResponseHandler = null;
 
 ipcMain.handle('set-rpc', async (event, config) => {
-    startWorker(); // На случай если воркер упал
+    startWorker();
     
     return new Promise((resolve) => {
         const timeout = setTimeout(() => {
             rpcResponseHandler = null;
-            resolve({ success: false, error: 'Время ожидания истекло. Попробуйте ещё раз.' });
-        }, 30000);
+            resolve({ success: false, error: 'Время ожидания истекло. Проверьте, запущен ли Discord.' });
+        }, 35000);
 
-        // Устанавливаем обработчик для одного ответа
         rpcResponseHandler = (msg) => {
             if (msg.type === 'ok' || msg.type === 'error') {
                 clearTimeout(timeout);

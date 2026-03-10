@@ -2,11 +2,39 @@
 <div align="center">
     <h1 align="center">Fast RPC</h1>
     <p align="center">
-        Удобный, красивый и настраиваемый Discord Rich Presence (RPC) менеджер.
-        <br />
-        <a href="https://github.com/ferrum-dev/fast-rpc/releases"><strong>Скачать последнюю версию »</strong></a>
-    </p>
-    <br>
+     # 🚀 Fast RPC 2026 Edition
+
+Самый быстрый и стильный менеджер Discord Rich Presence. Накачай свой профиль за считанные секунды!
+
+## ✨ Особенности
+
+- **Стиль 2026:** Современный интерфейс с эффектом Glassmorphism и неоновыми акцентами.
+- **Два режима:**
+  - **Выбор процесса:** Автоматический перехват статуса любого запущенного окна.
+  - **Свой статус:** Полная кастомизация кнопок, картинок и текста.
+- **Пресеты:** Сохраняй свои любимые настройки и переключайся между ними в один клик.
+- **Умный воркер:** Стабильное соединение через отдельный Node.js процесс.
+- **Тёмная тема:** Идеально вписывается в экосистему Discord.
+
+## 🛠 Установка
+
+1. Убедитесь, что у вас установлен [Node.js](https://nodejs.org/).
+2. Установите зависимости:
+   ```bash
+   npm install
+   ```
+3. Запустите приложение:
+   ```bash
+   npm start
+   ```
+
+## 💎 Поддержка
+
+Понравилось приложение? Поставь нам звезду на GitHub! ⭐
+
+---
+Создано с ❤️ от [Ferrum Dev](https://github.com/ferrum-dev)
+
     <p>
         <a href="https://github.com/ferrum-dev/fast-rpc/releases">
             <img src="https://img.shields.io/github/v/release/ferrum-dev/fast-rpc" alt="GitHub release">
