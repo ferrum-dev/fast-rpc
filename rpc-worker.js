@@ -6,17 +6,104 @@
 process.noDeprecation = true;
 
 const DiscordRPC = require('discord-rpc');
+const WebSocket = require('ws');
 
 let rpcClient = null;
 let currentClientId = null;
 let startTimestamp = null;
+let isConnected = false;
+
+// Discord WebSocket для чтения текущего presence
+let discordWs = null;
+let discordToken = null;
+let currentPresence = null;
 
 function send(type, data = {}) {
     process.stdout.write(JSON.stringify({ type, ...data }) + '\n');
 }
 
+function updateConnectionStatus() {
+    send('connection-status', { connected: isConnected });
+}
+
+// Подключение к Discord WebSocket для чтения presence
+async function connectToDiscordWebSocket() {
+    if (discordWs && discordWs.readyState === WebSocket.OPEN) return;
+
+    try {
+        // Пробуем подключиться к локальному Discord WebSocket
+        const wsUrl = 'ws://127.0.0.1:6463/';
+        discordWs = new WebSocket(wsUrl);
+
+        discordWs.on('open', () => {
+            console.log('[Discord WS] Connected');
+            // Отправляем команду для аутентификации
+            discordWs.send(JSON.stringify({
+                cmd: 'DISPATCH',
+                args: {
+                    cmd: 'SET_ACTIVITY',
+                    args: { pid: process.pid }
+                }
+            }));
+        });
+
+        discordWs.on('message', (data) => {
+            try {
+                const message = JSON.parse(data.toString());
+                if (message.cmd === 'DISPATCH' && message.evt === 'PRESENCE_UPDATE') {
+                    currentPresence = message.data;
+                    send('presence-update', { presence: currentPresence });
+                }
+            } catch (e) { }
+        });
+
+        discordWs.on('close', () => {
+            console.log('[Discord WS] Closed');
+            discordWs = null;
+        });
+
+        discordWs.on('error', (err) => {
+            console.log('[Discord WS] Error:', err.message);
+            discordWs = null;
+        });
+    } catch (e) {
+        console.log('[Discord WS] Connect error:', e.message);
+    }
+}
+
+// Получение текущего presence из Discord
+async function getCurrentPresence() {
+    return new Promise((resolve) => {
+        if (currentPresence) {
+            resolve({ success: true, presence: currentPresence });
+        } else {
+            // Пробуем подключиться и подождать данные
+            connectToDiscordWebSocket();
+            setTimeout(() => {
+                if (currentPresence) {
+                    resolve({ success: true, presence: currentPresence });
+                } else {
+                    resolve({ success: false, error: 'Нет активного RPC presence' });
+                }
+            }, 2000);
+        }
+    });
+}
+
 async function startRpc(config) {
     try {
+        // Валидация: нужен хотя бы clientId
+        if (!config.clientId) {
+            send('error', { message: 'Client ID обязателен!' });
+            return;
+        }
+
+        // Валидация: если нет details, state и изображений — процесс не даёт RPC данные
+        if (!config.details && !config.state && !config.largeImageKey && !config.smallImageKey) {
+            send('error', { message: 'Процесс не предоставляет RPC данные. Заполните Details, State или добавьте изображения.' });
+            return;
+        }
+
         const activity = {};
         if (config.details) activity.details = config.details;
         if (config.state) activity.state = config.state;
@@ -52,6 +139,8 @@ async function startRpc(config) {
         // Иначе — пересоздаём подключение
         if (rpcClient) {
             try { rpcClient.destroy(); } catch (e) { }
+            isConnected = false;
+            updateConnectionStatus();
         }
 
         currentClientId = config.clientId;
@@ -60,19 +149,25 @@ async function startRpc(config) {
         try {
             await new Promise((resolve, reject) => {
                 rpcClient.on('ready', () => {
+                    isConnected = true;
+                    updateConnectionStatus();
                     rpcClient.setActivity(activity).catch(() => { });
                     resolve();
                 });
-                
+
                 rpcClient.on('close', () => {
                     rpcClient = null;
                     currentClientId = null;
+                    isConnected = false;
+                    updateConnectionStatus();
                     send('error', { message: 'Соединение с Discord закрыто' });
                 });
 
                 rpcClient.login({ clientId: config.clientId }).catch(err => {
                     rpcClient = null;
                     currentClientId = null;
+                    isConnected = false;
+                    updateConnectionStatus();
                     let msg = 'Не удалось подключиться к Discord.';
                     if (err.message && err.message.includes('connection closed')) {
                         msg = 'Ошибка: Discord не запущен на ПК!';
@@ -98,6 +193,8 @@ function stopRpc() {
         rpcClient = null;
         currentClientId = null;
         startTimestamp = null;
+        isConnected = false;
+        updateConnectionStatus();
     }
     send('stopped');
 }
@@ -118,6 +215,7 @@ process.stdin.on('data', (chunk) => {
             else if (cmd.type === 'stop') stopRpc();
             else if (cmd.type === 'ping') send('pong');
             else if (cmd.type === 'exit') process.exit(0);
+            else if (cmd.type === 'get-presence') getCurrentPresence().then(res => send('presence-result', res));
         } catch (e) { }
     }
 });

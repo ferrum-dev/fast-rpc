@@ -34,6 +34,15 @@ ipcRenderer.on('rpc-status', (event, { active, error }) => {
     if (error) showToast(error, 'error');
 });
 
+// Переключение на вкладку процессов из трея
+ipcRenderer.on('switch-process', () => {
+    // Сбрасываем текущий выбор и загружаем процессы заново
+    document.querySelector('[data-tab="tab-process"]').click();
+    loadProcesses();
+    procSettings.style.display = 'none';
+    currentProc = null;
+});
+
 // Обновления
 ipcRenderer.on('update-message', (event, message) => {
     showToast(message, 'success');
@@ -52,6 +61,35 @@ ipcRenderer.on('update-progress', (event, percent) => {
     if (percent >= 100) setTimeout(() => existing.remove(), 2000);
 });
 
+// Discord presence обновления
+let currentDiscordPresence = null;
+
+ipcRenderer.on('discord-presence', (event, presence) => {
+    currentDiscordPresence = presence;
+    updatePresenceUI();
+});
+
+ipcRenderer.on('discord-presence-result', (event, result) => {
+    if (result.success && result.presence) {
+        currentDiscordPresence = result.presence;
+        updatePresenceUI();
+    }
+});
+
+function updatePresenceUI() {
+    const presenceEl = document.getElementById('current-presence-display');
+    if (!presenceEl) return;
+
+    if (currentDiscordPresence && currentDiscordPresence.activities && currentDiscordPresence.activities.length > 0) {
+        const activity = currentDiscordPresence.activities[0];
+        presenceEl.style.display = 'block';
+        document.getElementById('presence-app-name').textContent = activity.name || 'Неизвестно';
+        document.getElementById('presence-details').textContent = activity.details || '—';
+        document.getElementById('presence-state').textContent = activity.state || '—';
+    } else {
+        presenceEl.style.display = 'none';
+    }
+}
 
 // Вкладки
 navItems.forEach(item => {
@@ -100,6 +138,12 @@ function selectProcess(proc, element) {
     document.querySelectorAll('.process-item').forEach(el => el.classList.remove('selected'));
     element.classList.add('selected');
 
+    const result = confirm(`Отображать процесс "${proc.Name}" в Discord RPC?\n\nНажмите "OK" для подтверждения или "Отмена" для отказа.`);
+    
+    if (!result) {
+        return;
+    }
+
     currentProc = proc;
     procNameSpan.textContent = proc.Name;
     procSettings.style.display = 'block';
@@ -119,10 +163,23 @@ function updateStatusUI(active) {
 
 // Запуск (Выбор процесса)
 btnStartProc.addEventListener('click', async () => {
+    const details = document.getElementById('proc-details').value;
+    const state = document.getElementById('proc-state').value;
+
+    if (!currentProc) {
+        showToast('Выберите процесс из списка!', 'error');
+        return;
+    }
+
+    if (!details && !state) {
+        showToast('Процесс не предоставляет RPC данные. Заполните Details или State.', 'error');
+        return;
+    }
+
     const config = {
-        clientId: document.getElementById('proc-client-id').value || '1131976092524458054',
-        details: document.getElementById('proc-details').value,
-        state: document.getElementById('proc-state').value,
+        clientId: '1131976092524458054',
+        details: details,
+        state: state,
         useTimestamp: document.getElementById('proc-time').checked
     };
 
@@ -263,3 +320,23 @@ async function initSettings() {
 
 initSettings();
 loadProcesses();
+
+// Кнопка перехвата RPC
+const btnInterceptRpc = document.getElementById('btn-intercept-rpc');
+if (btnInterceptRpc) {
+    btnInterceptRpc.addEventListener('click', async () => {
+        btnInterceptRpc.textContent = 'Запрос...';
+        btnInterceptRpc.disabled = true;
+
+        const result = await ipcRenderer.invoke('get-current-rpc');
+
+        btnInterceptRpc.textContent = 'Перехватить';
+        btnInterceptRpc.disabled = false;
+
+        if (result.success && result.presence) {
+            showToast('RPC перехвачен! Данные загружены.', 'success');
+        } else {
+            showToast(result.error || 'Не удалось перехватить RPC', 'error');
+        }
+    });
+}

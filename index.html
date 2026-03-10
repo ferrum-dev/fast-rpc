@@ -49,10 +49,7 @@
                     <span id="ds-status-text">Отключено</span>
                 </div>
                 <button id="btn-stop-rpc" class="btn btn-danger" disabled>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                    </svg>
+                    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3C/svg%3E" alt="stop" style="width: 16px; height: 16px;">
                     Остановить RPC
                 </button>
             </div>
@@ -66,19 +63,25 @@
                     <button class="btn btn-secondary btn-sm" id="btn-refresh-proc">Обновить список</button>
                 </header>
 
+                <!-- Блок текущего RPC статуса -->
+                <div class="card" id="current-presence-display" style="display: none; margin-bottom: 16px; border-color: var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h3 style="margin: 0; font-size: 16px; color: var(--primary);">🔍 Текущий RPC в Discord</h3>
+                        <button class="btn btn-primary btn-sm" id="btn-intercept-rpc" style="padding: 6px 12px; font-size: 13px;">Перехватить</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="font-weight: 500; font-size: 14px;">Приложение: <span id="presence-app-name" style="color: var(--text-main);"></span></div>
+                        <div style="font-size: 13px; color: var(--text-muted);">Детали: <span id="presence-details"></span></div>
+                        <div style="font-size: 13px; color: var(--text-muted);">Состояние: <span id="presence-state"></span></div>
+                    </div>
+                </div>
+
                 <div class="process-list" id="process-list">
                     <div class="text-muted">Загрузка...</div>
                 </div>
 
                 <div class="card" id="process-settings" style="display: none;">
                     <h3>Настройка RPC для: <span id="selected-proc-name"></span></h3>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Client ID (Дополнительно)</label>
-                            <input type="text" id="proc-client-id" placeholder="ID приложения Discord"
-                                value="1131976092524458054">
-                        </div>
-                    </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Детали (Details)</label>

@@ -10,8 +10,10 @@ app.setAppUserModelId('com.ferrum.fastrpc');
 
 const LOGO_PATH = path.join(__dirname, 'logo', 'logo.png');
 
-// Создаём nativeImage из PNG — Electron сам конвертирует в нужный формат для Windows
-const APP_ICON = nativeImage.createFromPath(LOGO_PATH);
+// Создаём иконки из PNG с правильным размером для Windows
+const APP_ICON_RAW = nativeImage.createFromPath(LOGO_PATH);
+const APP_ICON = APP_ICON_RAW.resize({ width: 256, height: 256 }); // Для окна и трея
+const TRAY_MENU_ICON = APP_ICON_RAW.resize({ width: 16, height: 16 }); // Для меню
 
 let mainWindow;
 let tray;
@@ -81,14 +83,31 @@ function handleWorkerMessage(msg) {
         rpcActive = false;
         if (mainWindow) mainWindow.webContents.send('rpc-status', { active: false });
     }
-    
+
     // Обработка ответа для set-rpc
     if (rpcResponseHandler) {
         rpcResponseHandler(msg);
     }
-    
+
+    // Обновляем статус подключения от Discord (реальное состояние)
+    if (msg.type === 'connection-status') {
+        rpcActive = msg.connected;
+        if (mainWindow) mainWindow.webContents.send('rpc-status', { active: msg.connected });
+        ipcMain.emit('rpc-status-changed');
+    }
+
+    // Обновление presence от Discord WebSocket
+    if (msg.type === 'presence-update' && msg.presence) {
+        if (mainWindow) mainWindow.webContents.send('discord-presence', msg.presence);
+    }
+
+    // Результат запроса presence
+    if (msg.type === 'presence-result') {
+        if (mainWindow) mainWindow.webContents.send('discord-presence-result', msg);
+    }
+
     // Обновляем трей
-    if (msg.type === 'ok' || msg.type === 'stopped' || msg.type === 'error') {
+    if (msg.type === 'ok' || msg.type === 'stopped' || msg.type === 'error' || msg.type === 'connection-status') {
         ipcMain.emit('rpc-status-changed');
     }
 }
@@ -190,11 +209,34 @@ function createTray() {
                 click: () => { mainWindow && mainWindow.show(); }
             },
             {
+                label: 'Выбрать другой процесс',
+                enabled: rpcActive,
+                click: () => {
+                    mainWindow && mainWindow.show();
+                    mainWindow.webContents.send('switch-process');
+                }
+            },
+            {
+                label: 'Установить кастомные настройки',
+                enabled: rpcActive,
+                click: () => {
+                    mainWindow && mainWindow.show();
+                    // Переключаем на вкладку кастомного статуса
+                    setTimeout(() => {
+                        const customTab = mainWindow.webContents;
+                        customTab.executeJavaScript(`
+                            document.querySelector('[data-tab="tab-custom"]').click();
+                        `);
+                    }, 300);
+                }
+            },
+            {
                 label: 'Остановить RPC',
                 enabled: rpcActive,
                 click: () => {
                     sendWorker({ type: 'stop' });
-                }
+                },
+                icon: TRAY_MENU_ICON
             },
             { type: 'separator' },
             {
@@ -279,6 +321,23 @@ ipcMain.handle('set-rpc', async (event, config) => {
 ipcMain.handle('stop-rpc', async () => {
     sendWorker({ type: 'stop' });
     return true;
+});
+
+ipcMain.handle('get-current-rpc', async () => {
+    return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+            resolve({ success: false, error: 'Время ожидания истекло' });
+        }, 5000);
+
+        const handler = (event, msg) => {
+            clearTimeout(timeout);
+            ipcMain.removeListener('discord-presence-result', handler);
+            resolve(msg);
+        };
+
+        ipcMain.on('discord-presence-result', handler);
+        sendWorker({ type: 'get-presence' });
+    });
 });
 
 ipcMain.handle('get-autostart', () => {
